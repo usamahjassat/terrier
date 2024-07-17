@@ -34,13 +34,14 @@ func processTar(tarBallReader *tar.Reader, cfg Config) (int, []File, []File, err
 		switch header.Typeflag {
 		case tar.TypeReg:
 			bs, _ := ioutil.ReadAll(tarBallReader)
-			if filepath.Ext(strings.TrimSpace(header.Name)) == ".tar" {
+			if filepath.Ext(strings.TrimSpace(header.Name)) == ".tar" || strings.HasPrefix(header.Name, "blobs/") {
 				r := bytes.NewReader(bs)
 				tarBallReader2 := tar.NewReader(r)
 				if len(cfg.Files) > 0 {
 					tmpNumInstancesFound, tmpIdentifiedFiles, tmpVerifiedFiles, err := inspectTarForFiles(tarBallReader2, header.Name, cfg)
+					// Sometimes it might not be a tar file, so just carry
 					if err != nil {
-						return 0, identifiedFiles, verifiedFiles, err
+						continue
 					}
 					numInstancesFound += tmpNumInstancesFound
 					identifiedFiles = append(identifiedFiles, tmpIdentifiedFiles...)
@@ -60,11 +61,10 @@ func processTar(tarBallReader *tar.Reader, cfg Config) (int, []File, []File, err
 }
 
 func inspectTarForFiles(tarBallReader *tar.Reader, tarName string, cfg Config) (int, []File, []File, error) {
-	imageLayer := tarName[0:strings.Index(tarName, "/")]
 	var identifiedFiles []File
 	var verifiedFiles []File
 	numInstancesFound := 0
-	fmt.Println("[*] Inspecting Layer: ", imageLayer)
+	fmt.Println("[*] Inspecting: ", tarName)
 
 	for {
 		header, err := tarBallReader.Next()
@@ -72,8 +72,7 @@ func inspectTarForFiles(tarBallReader *tar.Reader, tarName string, cfg Config) (
 			if err == io.EOF {
 				break
 			}
-			fmt.Println("[ERROR] Header Error", err)
-			os.Exit(1)
+			return 0, identifiedFiles, verifiedFiles, err
 		}
 		filename := header.Name
 		linkName := header.Linkname
